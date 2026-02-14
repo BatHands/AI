@@ -2,7 +2,9 @@
 
 ## Project Overview
 
-This repository contains a **Retrieval-Augmented Generation (RAG)** proof-of-concept built with LangChain. The single Jupyter notebook demonstrates a pipeline that loads a PDF document, chunks it, stores embeddings in a Milvus vector database, and answers questions using a Mistral-7B LLM via Hugging Face.
+This repository implements a **Retrieval-Augmented Generation (RAG)** tool built with LangChain. It loads PDF documents, chunks them, stores embeddings in a Milvus vector database, and answers questions using a Mistral-7B LLM via Hugging Face.
+
+The project can be used as a **CLI tool** or explored interactively via the original **Jupyter notebook**.
 
 **License:** MIT (Copyright 2025 BatHands)
 
@@ -10,89 +12,94 @@ This repository contains a **Retrieval-Augmented Generation (RAG)** proof-of-con
 
 ```
 AI/
+├── main.py                        # CLI entrypoint
+├── src/
+│   ├── __init__.py
+│   ├── config.py                  # Configuration (env vars, model IDs, defaults)
+│   ├── loader.py                  # DoclingPDFLoader + load_and_split()
+│   └── chain.py                   # Vector store + RAG chain assembly
+├── RAG_with_LangChain.ipynb       # Original Colab notebook (demo/reference)
+├── requirements.txt               # Python dependencies
+├── .env.example                   # Environment variable template
+├── .gitignore                     # Git ignore rules
 ├── CLAUDE.md                      # This file — AI assistant guide
-├── LICENSE                        # MIT License
-└── RAG_with_LangChain.ipynb       # Main notebook (RAG pipeline)
+└── LICENSE                        # MIT License
 ```
-
-This is a minimal, single-notebook project. There is no Python package structure, no tests, no CI/CD, and no build system.
 
 ## Technology Stack
 
-| Component         | Technology                              |
-|--------------------|-----------------------------------------|
-| Language           | Python (Jupyter Notebook)               |
-| Runtime            | Google Colab (primary), local Jupyter   |
-| RAG Framework      | LangChain                               |
-| Document Loading   | Docling (`DocumentConverter`)           |
-| Text Splitting     | `RecursiveCharacterTextSplitter` (chunk_size=1000, overlap=200) |
-| Embeddings         | Hugging Face `BAAI/bge-small-en-v1.5`  |
-| Vector Store       | Milvus (via `langchain-milvus`, lite mode by default) |
-| LLM                | `mistralai/Mistral-7B-Instruct-v0.3` via Hugging Face Inference API |
-| Env Management     | `python-dotenv`                         |
+| Component        | Technology                                            |
+|------------------|-------------------------------------------------------|
+| Language         | Python 3.10+                                          |
+| RAG Framework    | LangChain (LCEL chain composition)                    |
+| Document Loading | Docling (`DocumentConverter` -> markdown)             |
+| Text Splitting   | `RecursiveCharacterTextSplitter`                      |
+| Embeddings       | Hugging Face `BAAI/bge-small-en-v1.5`                |
+| Vector Store     | Milvus Lite (local file-based, via `langchain-milvus`)|
+| LLM              | `mistralai/Mistral-7B-Instruct-v0.3` via HF API      |
+| Env Management   | `python-dotenv`                                       |
 
-## Notebook Pipeline (RAG_with_LangChain.ipynb)
+## Quick Start
 
-The notebook executes a linear RAG pipeline across 12 cells:
+```bash
+# 1. Install dependencies
+pip install -r requirements.txt
 
-1. **Dependencies** — Installs packages via `%pip install`
-2. **Environment** — Loads `.env` file with `dotenv`
-3. **DoclingPDFLoader** — Custom `BaseLoader` subclass that converts PDFs to markdown using Docling
-4. **Source document** — Points to a sample PDF URL from Trinity College
-5. **Text splitter** — Configures `RecursiveCharacterTextSplitter`
-6. **Load & split** — Loads the PDF and splits into chunks
-7. **HF login** — Interactive Hugging Face authentication via `notebook_login()`
-8. **Embeddings** — Initializes BGE-small embedding model
-9. **Vector store** — Creates a Milvus collection from document splits
-10. **LLM setup** — Configures Mistral-7B via `HuggingFaceEndpoint`
-11. **RAG chain** — Assembles retriever, prompt template, LLM, and output parser into a LangChain chain
-12. **Query** — Runs a sample question against the RAG chain
+# 2. Configure environment
+cp .env.example .env
+# Edit .env and add your HF_API_KEY
+
+# 3. Query a PDF
+python main.py --pdf document.pdf --query "Summarize this document"
+
+# Also works with URLs
+python main.py --pdf https://example.com/paper.pdf --query "What are the key findings?"
+```
 
 ## Environment Variables
 
-| Variable     | Required | Description                                      | Default                          |
-|--------------|----------|--------------------------------------------------|----------------------------------|
-| `HF_API_KEY` | Yes      | Hugging Face API token for model inference        | None                             |
-| `MILVUS_URI` | No       | Milvus connection URI                             | Temporary local SQLite-like file |
+| Variable           | Required | Description                                | Default                              |
+|--------------------|----------|--------------------------------------------|--------------------------------------|
+| `HF_API_KEY`       | Yes      | Hugging Face API token for model inference | None                                 |
+| `HF_EMBED_MODEL_ID`| No      | Embedding model ID                         | `BAAI/bge-small-en-v1.5`            |
+| `HF_LLM_MODEL_ID` | No       | LLM model ID                              | `mistralai/Mistral-7B-Instruct-v0.3`|
+| `MILVUS_URI`       | No       | Milvus connection URI                      | `./milvus_store/milvus.db`           |
+| `CHUNK_SIZE`       | No       | Text chunk size in characters              | `1000`                               |
+| `CHUNK_OVERLAP`    | No       | Overlap between chunks in characters       | `200`                                |
 
-These should be placed in a `.env` file at the project root, or set as environment variables in Colab.
+Place these in a `.env` file at the project root. See `.env.example` for a template.
 
-## Development Workflow
+## Code Architecture
 
-### Running the notebook
+### `src/config.py`
+Central configuration module. Loads `.env` and exposes all settings as module-level constants. All other modules import from here.
 
-- **Google Colab (recommended):** Open via the Colab badge in the notebook's first cell. Dependencies install inline.
-- **Local Jupyter:** Ensure Python 3.10+ is available. Create a `.env` file with `HF_API_KEY`, then run cells sequentially.
+### `src/loader.py`
+- **`DoclingPDFLoader`** — Custom LangChain `BaseLoader` that converts PDFs to markdown via Docling's `DocumentConverter`, then yields `LCDocument` objects.
+- **`load_and_split()`** — Convenience function that loads PDF(s) and splits into chunks using `RecursiveCharacterTextSplitter`.
 
-### Dependencies
+### `src/chain.py`
+- **`build_vectorstore()`** — Creates a Milvus vector store from document splits using HuggingFace embeddings.
+- **`build_rag_chain()`** — Assembles the full RAG chain: retriever -> prompt -> ChatHuggingFace LLM -> string output parser.
 
-All dependencies are installed inline in the notebook via pip. There is no `requirements.txt` or `pyproject.toml`. The core packages are:
+### `main.py`
+CLI entrypoint using `argparse`. Validates inputs, then runs the full pipeline: load -> split -> embed -> query.
 
-```
-docling python-dotenv langchain langchain-milvus langchain-text-splitters langchain-huggingface pymilvus[milvus_lite] huggingface_hub ipywidgets
-```
-
-### No build, test, or lint commands
-
-This project has no:
-- Build system or compilation step
-- Test suite or test runner
-- Linter or formatter configuration
-- CI/CD pipeline
-- Makefile or scripts
+### `RAG_with_LangChain.ipynb`
+Original Colab notebook. Kept as a demo/reference. Contains the same pipeline in an interactive cell-by-cell format.
 
 ## Key Code Conventions
 
-- **Custom loader pattern:** `DoclingPDFLoader` extends LangChain's `BaseLoader` and implements `lazy_load()` to yield `LCDocument` objects with markdown content.
-- **Chain composition:** The RAG chain uses LangChain Expression Language (LCEL) with the pipe (`|`) operator to compose retriever, prompt, model, and parser.
-- **Prompt structure:** Uses `ChatPromptTemplate` with separate system and human messages. The human message template injects `{context}` and `{question}` placeholders.
-- **Type hints:** The code uses Python type hints (e.g., `str | list[str]`, `Iterator[LCDocument]`).
+- **LCEL chain composition:** The RAG chain uses LangChain Expression Language with the pipe (`|`) operator.
+- **Prompt structure:** `ChatPromptTemplate` with separate system and human messages. The human template injects `{context}` and `{question}`.
+- **Type hints:** Python type hints throughout (e.g., `str | list[str]`, `Iterator[LCDocument]`).
+- **Lazy imports in CLI:** Heavy dependencies are imported inside `main()` so argument validation and error messages are fast.
 
 ## Guidelines for AI Assistants
 
 - **Do not commit secrets.** Never add `.env` files or API keys to the repository.
-- **Preserve notebook structure.** The cells follow a logical pipeline order. New cells should maintain this linear flow.
-- **Keep it simple.** This is a proof-of-concept. Avoid over-engineering with unnecessary abstractions, classes, or config files.
-- **Colab compatibility.** Any changes must remain runnable in Google Colab. Avoid local-only dependencies or file paths.
-- **Inline installs.** Dependencies are installed in notebook cells with `%pip install`. If adding a new dependency, add it to the existing install cell rather than creating a new one.
-- **Environment variables.** Any new secrets or configuration should use `os.environ.get()` with sensible defaults where possible, loaded via `dotenv`.
+- **Update requirements.txt** when adding new dependencies.
+- **Keep config centralized** in `src/config.py`. New settings should follow the `os.environ.get()` pattern with sensible defaults.
+- **Maintain the notebook.** The Colab notebook should remain functional as a standalone demo, even though the CLI is the primary interface.
+- **Type hints required.** All new functions should include type hints.
+- **Environment variables** for any new secrets or configuration. Never hardcode credentials or API keys.

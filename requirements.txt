@@ -1,0 +1,8 @@
+docling
+python-dotenv
+langchain
+langchain-milvus
+langchain-text-splitters
+langchain-huggingface
+pymilvus[milvus_lite]
+huggingface_hub
